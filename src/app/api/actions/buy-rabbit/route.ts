@@ -10,9 +10,9 @@ import {
 } from "@solana/actions";
 
 import {
-  Connection,
+  // Connection,
   PublicKey,
-  VersionedTransaction,
+  // VersionedTransaction,
 } from "@solana/web3.js";
 
 const headers = {
@@ -62,7 +62,7 @@ export const POST = async (req: Request) => {
 
     const body: ActionPostRequest = await req.json();
     const userPublicKey = new PublicKey(body.account);
-    const connection = new Connection(RPC);
+    // const connection = new Connection(RPC);
 
     const quoteRes = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${RABBIT_MINT}&amount=${Math.floor(amountSOL * 1e9)}&slippageBps=100`);
     const quote = await quoteRes.json();
