@@ -5,7 +5,7 @@ import { useBlinkSolanaWalletAdapter } from "@dialectlabs/blinks/hooks/solana";
 import "@dialectlabs/blinks/index.css";
 
 export default function BuyRabbit() {
-  const blinkApiUrl = "http://localhost:3000/api/actions/buy-rabbit";
+  const blinkApiUrl = "/api/actions/buy-rabbit";
 
   const { adapter } = useBlinkSolanaWalletAdapter(
     "https://api.mainnet-beta.solana.com"
