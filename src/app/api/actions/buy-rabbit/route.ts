@@ -22,7 +22,7 @@ const headers = {
 };
 
 const RABBIT_MINT = process.env.NEXT_PUBLIC_RABBIT_MINT!;
-const RPC = "https://api.mainnet-beta.solana.com";
+// const RPC = "https://api.mainnet-beta.solana.com";
 
 export const OPTIONS = async () => new Response(null, { headers });
 
