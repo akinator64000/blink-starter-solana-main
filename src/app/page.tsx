@@ -29,7 +29,7 @@ const steps = [
 ];
 
 export default function Home() {
-  const blinkApiUrl = "http://localhost:3000/api/actions/donate-sol";
+  const blinkApiUrl = "https://blinks-rabbit.vercel.app/api/actions/donate-sol";
 
   // Adapter, used to connect to the wallet
   const { adapter } = useBlinkSolanaWalletAdapter(
