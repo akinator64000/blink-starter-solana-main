@@ -4,7 +4,6 @@ import { Blink, useBlink } from "@dialectlabs/blinks";
 import { useBlinkSolanaWalletAdapter } from "@dialectlabs/blinks/hooks/solana";
 import "@dialectlabs/blinks/index.css";
 
-
 export const metadata = {
   title: "Buy RABBIT",
   description: "Swap SOL for RABBIT token using Jupiter",
