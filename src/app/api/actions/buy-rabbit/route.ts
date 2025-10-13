@@ -1,5 +1,4 @@
 // file: src/app/api/actions/buy-rabbit/route.ts
-
 import {
   ActionGetResponse,
   ActionPostRequest,
@@ -8,12 +7,7 @@ import {
   ACTIONS_CORS_HEADERS,
   BLOCKCHAIN_IDS,
 } from "@solana/actions";
-
-import {
-  // Connection,
-  PublicKey,
-  // VersionedTransaction,
-} from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 
 const headers = {
   ...ACTIONS_CORS_HEADERS,
@@ -22,7 +16,7 @@ const headers = {
 };
 
 const RABBIT_MINT = process.env.NEXT_PUBLIC_RABBIT_MINT!;
-// const RPC = "https://api.mainnet-beta.solana.com";
+const LITE = "https://lite-api.jup.ag/swap/v1"; // 👈 Lite endpoints
 
 export const OPTIONS = async () => new Response(null, { headers });
 
@@ -35,65 +29,130 @@ export const GET = async (req: Request) => {
     description: "Swap SOL for RABBIT token using Jupiter",
     links: {
       actions: [
-        { type: "transaction", label: "0.1 SOL", href: `/api/actions/buy-rabbit?amount=0.1` },
-        { type: "transaction", label: "0.5 SOL", href: `/api/actions/buy-rabbit?amount=0.5` },
-        { type: "transaction", label: "1 SOL", href: `/api/actions/buy-rabbit?amount=1` },
+        {
+          type: "transaction",
+          label: "0.1 SOL",
+          href: `/api/actions/buy-rabbit?amount=0.1`,
+        },
+        {
+          type: "transaction",
+          label: "0.5 SOL",
+          href: `/api/actions/buy-rabbit?amount=0.5`,
+        },
+        {
+          type: "transaction",
+          label: "1 SOL",
+          href: `/api/actions/buy-rabbit?amount=1`,
+        },
         {
           type: "transaction",
           label: "Buy",
           href: `/api/actions/buy-rabbit?amount={amount}`,
           parameters: [
-            { name: "amount", label: "Enter a custom SOL amount", type: "number" },
+            {
+              name: "amount",
+              label: "Enter a custom SOL amount",
+              type: "number",
+            },
           ],
         },
       ],
     },
   };
-
   return new Response(JSON.stringify(response), { status: 200, headers });
 };
 
 export const POST = async (req: Request) => {
   try {
     const url = new URL(req.url);
-    const amountSOL = parseFloat(url.searchParams.get("amount") || "0.1");
-
-    if (!RABBIT_MINT || !amountSOL) throw new Error("Missing mint or amount");
+    const amountSOL = Number(url.searchParams.get("amount") ?? "0.1");
+    if (!RABBIT_MINT || !Number.isFinite(amountSOL) || amountSOL <= 0) {
+      return new Response(
+        JSON.stringify({
+          message: "Missing/invalid mint or amount",
+        } satisfies ActionError),
+        { status: 400, headers }
+      );
+    }
 
     const body: ActionPostRequest = await req.json();
+    if (!body.account) {
+      return new Response(
+        JSON.stringify({
+          message: "Missing account header/body",
+        } satisfies ActionError),
+        { status: 400, headers }
+      );
+    }
     const userPublicKey = new PublicKey(body.account);
-    // const connection = new Connection(RPC);
 
-    const quoteRes = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${RABBIT_MINT}&amount=${Math.floor(amountSOL * 1e9)}&slippageBps=100`);
+    // 1) Quote (Lite)
+    const inLamports = Math.round(amountSOL * 1e9);
+    const quoteUrl = new URL(`${LITE}/quote`);
+    quoteUrl.searchParams.set(
+      "inputMint",
+      "So11111111111111111111111111111111111111112"
+    ); // SOL
+    quoteUrl.searchParams.set("outputMint", RABBIT_MINT);
+    quoteUrl.searchParams.set("amount", String(inLamports));
+    quoteUrl.searchParams.set("slippageBps", "100"); // 1%
+
+    const quoteRes = await fetch(quoteUrl, { cache: "no-store" });
+    if (!quoteRes.ok) {
+      const txt = await quoteRes.text();
+      return new Response(
+        JSON.stringify({
+          message: `Quote failed: ${txt}`,
+        } satisfies ActionError),
+        { status: 502, headers }
+      );
+    }
     const quote = await quoteRes.json();
 
-    const swapTxRes = await fetch("https://quote-api.jup.ag/v6/swap", {
+    // 2) Swap (Lite)
+    const swapRes = await fetch(`${LITE}/swap`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        userPublicKey: userPublicKey.toBase58(),
-        wrapUnwrapSOL: true,
         quoteResponse: quote,
+        userPublicKey: userPublicKey.toBase58(),
+        wrapAndUnwrapSol: true, // 👈 CORRECT KEY
+        dynamicComputeUnitLimit: true, // 👌 safe defaults
+        prioritizationFeeLamports: "auto",
         asLegacyTransaction: false,
       }),
     });
-
-    const swapData = await swapTxRes.json();
-
-    if (!swapData.swapTransaction) throw new Error("Swap transaction missing");
-
-    const serialized = swapData.swapTransaction; // base64 Jupiter format
+    if (!swapRes.ok) {
+      const txt = await swapRes.text();
+      return new Response(
+        JSON.stringify({
+          message: `Swap failed: ${txt}`,
+        } satisfies ActionError),
+        { status: 502, headers }
+      );
+    }
+    const swap = await swapRes.json();
+    if (!swap?.swapTransaction) {
+      return new Response(
+        JSON.stringify({
+          message: "Swap transaction missing",
+        } satisfies ActionError),
+        { status: 502, headers }
+      );
+    }
 
     const response: ActionPostResponse = {
       type: "transaction",
-      transaction: serialized,
+      transaction: swap.swapTransaction, // base64
+      message: `Swap ~${amountSOL} SOL → RABBIT`,
     };
-
     return Response.json(response, { status: 200, headers });
-  } catch (err) {
-    console.error("Error in buy-rabbit POST:", err);
-    const message = err instanceof Error ? err.message : "Unknown error";
-    const error: ActionError = { message };
-    return new Response(JSON.stringify(error), { status: 500, headers });
+  } catch (e: any) {
+    return new Response(
+      JSON.stringify({
+        message: e?.message ?? "unknown",
+      } satisfies ActionError),
+      { status: 500, headers }
+    );
   }
 };
